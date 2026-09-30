@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # Script Manajemen & Pembaruan Website RZ Store (Laravel 13 / PHP 8.4)
-# Fungsi : Konfigurasi Website, Update dari GitHub, Nginx & SSL, Maintenance
+# Fungsi : Konfigurasi Website, Update dari GitHub, Terapkan Perubahan, SSL, Maintenance
 # ==============================================================================
 
 set -Eeuo pipefail
@@ -40,27 +40,30 @@ check_root() {
 }
 
 # ------------------------------------------------------------------------------
-# 1. Update Repository dari GitHub (Git Pull, Composer, NPM, Migrate, Cache)
+# 1. Terapkan Semua Perubahan ke Website (Rebuild, Migrate, Cache, Restart)
 # ------------------------------------------------------------------------------
-do_update() {
-    log_step "Memulai Pembaruan Website dari GitHub"
+do_apply_changes() {
+    log_step "Menerapkan Semua Perubahan ke Website (Rebuild & Activate)"
     
     log_info "Lokasi projek: ${PROJECT_DIR}"
-    
-    # 1. Git Pull
-    log_info "Mengambil pembaruan terbaru dari GitHub (git pull)..."
-    git fetch --all
-    git reset --hard origin/main || git pull origin main
-    log_success "Kode terbaru dari GitHub berhasil diambil."
+
+    # 1. Pastikan file .env ada
+    if [ ! -f ".env" ]; then
+        log_warn "File .env belum ditemukan. Membuat dari .env.example..."
+        if [ -f ".env.example" ]; then
+            cp .env.example .env
+            php artisan key:generate --force
+        fi
+    fi
 
     # 2. Composer Dependencies
     if [ -f "composer.json" ]; then
-        log_info "Memperbarui dependensi PHP (Composer)..."
+        log_info "Menginstal & mengoptimalkan dependensi PHP (Composer)..."
         composer install --no-dev --optimize-autoloader --no-interaction
-        log_success "Composer dependensi siap."
+        log_success "Composer dependensi berhasil dioptimalkan."
     fi
 
-    # 3. NPM Build
+    # 3. NPM Build (Frontend Vite / CSS)
     if [ -f "package.json" ]; then
         log_info "Memeriksa Node.js & NPM..."
         if ! command -v npm &> /dev/null; then
@@ -68,10 +71,10 @@ do_update() {
             curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
             apt-get install -y nodejs
         fi
-        log_info "Membangun asset frontend (Vite / Tailwind)..."
+        log_info "Mengompilasi asset frontend terbaru (Vite build)..."
         npm install --silent
         npm run build
-        log_success "Asset frontend berhasil dikompilasi."
+        log_success "Asset CSS & JavaScript berhasil dikompilasi ke public/build/."
     fi
 
     # 4. Database Migration
@@ -80,33 +83,60 @@ do_update() {
         touch database/database.sqlite
     fi
     php artisan migrate --force
-    log_success "Migrasi database selesai."
+    log_success "Migrasi tabel database selesai."
 
-    # 5. Clear & Cache Optimization
-    log_info "Mengoptimalkan cache konfigurasi, route, dan view..."
+    # 5. Clear & Re-cache Optimization
+    log_info "Membersihkan cache lama dan membuat cache baru untuk produksi..."
     php artisan optimize:clear
     php artisan config:cache
     php artisan route:cache
     php artisan view:cache
-    log_success "Cache Laravel berhasil diperbarui."
+    log_success "Cache konfigurasi, route, dan blade view berhasil dibuat."
 
     # 6. Fix Permissions
     fix_permissions_internal
 
-    # 7. Restart PHP-FPM & Nginx jika ada
+    # 7. Restart / Reload Web Server & PHP-FPM
     if command -v systemctl &> /dev/null; then
-        log_info "Memuat ulang layanan PHP-FPM dan Nginx..."
+        log_info "Memuat ulang layanan PHP-FPM 8.4 dan Nginx..."
         systemctl reload php8.4-fpm 2>/dev/null || systemctl restart php8.4-fpm 2>/dev/null || true
         systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
     fi
 
+    # Tampilkan info commit terakhir
+    local latest_commit=""
+    if command -v git &>/dev/null && [ -d ".git" ]; then
+        latest_commit=$(git log -1 --pretty=format:"%h - %s (%cr) <%an>" 2>/dev/null || echo "")
+    fi
+
     echo -e "\n${GREEN}==============================================================================${NC}"
-    echo -e "${GREEN}🎉 PEMBARUAN WEBSITE DARI GITHUB BERHASIL DISELESAIKAN!${NC}"
+    echo -e "${GREEN}🎉 SEMUA PERUBAHAN BERHASIL DITERAPKAN KE WEBSITE LIVE!${NC}"
+    if [[ -n "$latest_commit" ]]; then
+        echo -e "${CYAN}Commit Aktif : ${YELLOW}${latest_commit}${NC}"
+    fi
     echo -e "${GREEN}==============================================================================${NC}\n"
 }
 
 # ------------------------------------------------------------------------------
-# 2. Konfigurasi File Environment (.env)
+# 2. Update Repository dari GitHub (Git Pull + Terapkan Perubahan)
+# ------------------------------------------------------------------------------
+do_update() {
+    log_step "Memulai Pembaruan Website dari GitHub (Git Pull)"
+    
+    log_info "Lokasi projek: ${PROJECT_DIR}"
+    
+    # 1. Git Pull
+    log_info "Mengambil update terbaru dari GitHub..."
+    git fetch --all
+    git reset --hard origin/main || git pull origin main
+    log_success "Kode terbaru dari GitHub berhasil diunduh."
+
+    # 2. Terapkan seluruh perubahan (Composer, NPM, Migrate, Cache, Permissions)
+    do_apply_changes
+}
+
+# ------------------------------------------------------------------------------
+# 3. Konfigurasi File Environment (.env)
 # ------------------------------------------------------------------------------
 do_configure_env() {
     log_step "Konfigurasi Nilai .env Website"
@@ -194,7 +224,7 @@ do_configure_env() {
 }
 
 # ------------------------------------------------------------------------------
-# 3. Perbaiki Hak Akses Folder & File (Storage, Cache, Database)
+# 4. Perbaiki Hak Akses Folder & File (Storage, Cache, Database)
 # ------------------------------------------------------------------------------
 fix_permissions_internal() {
     log_info "Mengatur izin dan hak akses folder Laravel (www-data)..."
@@ -216,7 +246,7 @@ do_fix_permissions() {
 }
 
 # ------------------------------------------------------------------------------
-# 4. Bersihkan dan Optimalkan Cache
+# 5. Bersihkan dan Optimalkan Cache
 # ------------------------------------------------------------------------------
 do_optimize_cache() {
     log_step "Membersihkan & Mengoptimalkan Cache Laravel"
@@ -228,7 +258,7 @@ do_optimize_cache() {
 }
 
 # ------------------------------------------------------------------------------
-# 5. Pasang SSL Gratis Let's Encrypt (Certbot)
+# 6. Pasang SSL Gratis Let's Encrypt (Certbot)
 # ------------------------------------------------------------------------------
 do_setup_ssl() {
     check_root
@@ -257,7 +287,7 @@ do_setup_ssl() {
 }
 
 # ------------------------------------------------------------------------------
-# 6. Buat Akun Admin Baru / Reset Password
+# 7. Buat Akun Admin Baru / Reset Password
 # ------------------------------------------------------------------------------
 do_manage_admin() {
     log_step "Manajemen Akun Admin"
@@ -312,7 +342,7 @@ do_manage_admin() {
 }
 
 # ------------------------------------------------------------------------------
-# 7. Status Sistem & Layanan
+# 8. Status Sistem & Layanan
 # ------------------------------------------------------------------------------
 do_system_status() {
     log_step "Status Sistem & Layanan Website"
@@ -349,25 +379,27 @@ show_menu() {
 EOF
     echo -e "${NC}"
     echo -e "${BOLD}PILIH MENU OPERASI:${NC}"
-    echo -e " ${GREEN}1)${NC} 🔄 ${BOLD}Update dari GitHub${NC} (Git Pull, Composer, NPM, Migrate, Cache)"
-    echo -e " ${GREEN}2)${NC} ⚙️  ${BOLD}Konfigurasi .env Website${NC} (Domain, DB, Mode Debug, Key)"
-    echo -e " ${GREEN}3)${NC} 🧹 ${BOLD}Bersihkan & Optimalkan Cache${NC} (optimize:clear & cache)"
-    echo -e " ${GREEN}4)${NC} 🛡️  ${BOLD}Perbaiki Hak Akses Folder / Permissions${NC} (storage & cache)"
-    echo -e " ${GREEN}5)${NC} 🔒 ${BOLD}Pasang SSL Let's Encrypt (HTTPS)${NC} (Certbot)"
-    echo -e " ${GREEN}6)${NC} 👥 ${BOLD}Manajemen Akun Admin${NC} (Buat Baru / Reset Password)"
-    echo -e " ${GREEN}7)${NC} 📊 ${BOLD}Status Server & Layanan${NC} (Nginx, PHP-FPM, Disk, RAM)"
+    echo -e " ${GREEN}1)${NC} 🚀 ${BOLD}Terapkan Perubahan ke Website${NC} (Composer, Vite Build, Migrate, Cache, Reload)"
+    echo -e " ${GREEN}2)${NC} 🔄 ${BOLD}Update dari GitHub & Terapkan${NC} (Git Pull + Terapkan Perubahan)"
+    echo -e " ${GREEN}3)${NC} ⚙️  ${BOLD}Konfigurasi .env Website${NC} (Domain, DB, Mode Debug, Key)"
+    echo -e " ${GREEN}4)${NC} 🧹 ${BOLD}Bersihkan & Optimalkan Cache${NC} (optimize:clear & cache)"
+    echo -e " ${GREEN}5)${NC} 🛡️  ${BOLD}Perbaiki Hak Akses Folder / Permissions${NC} (storage & cache)"
+    echo -e " ${GREEN}6)${NC} 🔒 ${BOLD}Pasang SSL Let's Encrypt (HTTPS)${NC} (Certbot)"
+    echo -e " ${GREEN}7)${NC} 👥 ${BOLD}Manajemen Akun Admin${NC} (Buat Baru / Reset Password)"
+    echo -e " ${GREEN}8)${NC} 📊 ${BOLD}Status Server & Layanan${NC} (Nginx, PHP-FPM, Disk, RAM)"
     echo -e " ${RED}0)${NC} ❌ Keluar"
     echo ""
-    read -rp "Masukkan nomor pilihan [0-7]: " menu_choice
+    read -rp "Masukkan nomor pilihan [0-8]: " menu_choice
 
     case "$menu_choice" in
-        1) do_update ;;
-        2) do_configure_env ;;
-        3) do_optimize_cache ;;
-        4) do_fix_permissions ;;
-        5) do_setup_ssl ;;
-        6) do_manage_admin ;;
-        7) do_system_status ;;
+        1) do_apply_changes ;;
+        2) do_update ;;
+        3) do_configure_env ;;
+        4) do_optimize_cache ;;
+        5) do_fix_permissions ;;
+        6) do_setup_ssl ;;
+        7) do_manage_admin ;;
+        8) do_system_status ;;
         0) echo -e "${CYAN}Sampai jumpa!${NC}"; exit 0 ;;
         *) log_error "Pilihan tidak valid."; sleep 1 ;;
     esac
@@ -382,6 +414,9 @@ EOF
 # ------------------------------------------------------------------------------
 if [[ $# -gt 0 ]]; then
     case "$1" in
+        apply|deploy|rebuild)
+            do_apply_changes
+            ;;
         update|pull)
             do_update
             ;;
@@ -406,7 +441,8 @@ if [[ $# -gt 0 ]]; then
         help|--help|-h)
             echo "Penggunaan: ./manage.sh [command]"
             echo "Commands:"
-            echo "  update       : Update repository dari GitHub, migrasi DB, build assets, dan optimize"
+            echo "  apply        : Terapkan semua perubahan (Composer, Vite Build, Migrate, Cache, Reload Nginx/FPM)"
+            echo "  update       : Tarik kode dari GitHub (git pull) lalu terapkan perubahan"
             echo "  config       : Konfigurasi variabel .env (Domain, DB, Debug)"
             echo "  cache        : Bersihkan dan generate ulang cache Laravel"
             echo "  permissions  : Perbaiki kepemilikan folder storage & cache"
