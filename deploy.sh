@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # Script Otomatisasi Deploy Multi-Website Laravel (Ubuntu 24.04 LTS)
-# Projek : RZ Store
+# Projek : RZ Store (PHP 8.4 + Nginx)
 # ==============================================================================
 
 set -Eeuo pipefail
@@ -17,7 +17,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # Error Handler Trap
 catch_error() {
@@ -31,21 +31,10 @@ catch_error() {
 }
 trap 'catch_error $LINENO' ERR
 
-log_info() {
-    echo -e "${CYAN}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_step() {
-    echo -e "\n${BLUE}==>${NC} ${YELLOW}$1${NC}"
-}
+log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+log_step() { echo -e "\n${BLUE}==>${NC} ${YELLOW}$1${NC}"; }
 
 # ------------------------------------------------------------------------------
 # 0. Verifikasi Hak Akses Root
@@ -65,7 +54,7 @@ cat << "EOF"
  |_| \_\____| |____/ |_| \___/|_| \_\_____|
                                            
  Auto-Deployer Script for Ubuntu 24.04 LTS
- Multi-Website Nginx Architecture
+ Multi-Website Nginx Architecture (PHP 8.4)
 EOF
 echo -e "${NC}"
 
@@ -91,28 +80,32 @@ if [[ -z "${DOMAIN_NAME}" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Update & Install Dependencies Sistem (PHP, Nginx, Node, Composer)
+# 2. Pasang Repositori PPA & Install PHP 8.4
 # ------------------------------------------------------------------------------
-log_step "Langkah 2: Menyiapkan Paket Sistem Ubuntu 24.04 LTS"
+log_step "Langkah 2: Memasang PPA PHP 8.4 & Paket Sistem Ubuntu 24.04 LTS"
 
-log_info "Memperbarui repositori paket OS..."
+log_info "Memperbarui repositori OS dan dependensi dasar..."
 apt-get update -y
 apt-get install -y software-properties-common curl git unzip zip ufw lsb-release ca-certificates apt-transport-https
+
+log_info "Menambahkan repositori resmi PHP 8.4 (ppa:ondrej/php)..."
+add-apt-repository -y ppa:ondrej/php
+apt-get update -y
 
 log_info "Memasang Nginx Web Server..."
 apt-get install -y nginx
 
-log_info "Memasang PHP & Seluruh Ekstensi yang Dibutuhkan Laravel..."
-apt-get install -y php-fpm php-cli php-mbstring php-xml php-bcmath php-curl php-sqlite3 php-mysql php-zip php-intl php-gd php-tokenizer php-dom
+log_info "Memasang PHP 8.4 & Seluruh Ekstensi Laravel..."
+apt-get install -y php8.4 php8.4-fpm php8.4-cli php8.4-mbstring php8.4-xml php8.4-bcmath php8.4-curl php8.4-sqlite3 php8.4-mysql php8.4-zip php8.4-intl php8.4-gd php8.4-tokenizer php8.4-dom
 
-# Deteksi Socket PHP-FPM aktif
-PHP_FPM_SOCK=$(find /var/run/php/ -type s -name "php*-fpm.sock" | sort -V | tail -n 1 || true)
-if [[ -z "${PHP_FPM_SOCK}" ]]; then
-    PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' || echo "8.3")
-    systemctl start "php${PHP_VER}-fpm" || true
-    PHP_FPM_SOCK="/var/run/php/php${PHP_VER}-fpm.sock"
-fi
-log_info "Terdeteksi Socket PHP-FPM: ${PHP_FPM_SOCK}"
+# Set PHP 8.4 sebagai default CLI
+update-alternatives --set php /usr/bin/php8.4 || true
+systemctl restart php8.4-fpm || true
+systemctl enable php8.4-fpm || true
+
+PHP_FPM_SOCK="/var/run/php/php8.4-fpm.sock"
+log_info "PHP Version: $(php -v | head -n 1)"
+log_info "PHP-FPM Socket: ${PHP_FPM_SOCK}"
 
 # Install Composer
 if ! command -v composer &> /dev/null; then
@@ -132,7 +125,7 @@ else
     log_info "Node.js sudah terpasang ($(node -v))."
 fi
 
-log_success "Seluruh dependensi sistem berhasil dipasang."
+log_success "Seluruh dependensi sistem & PHP 8.4 berhasil dipasang."
 
 # ------------------------------------------------------------------------------
 # 3. Clone / Update Repository Projek
@@ -193,30 +186,25 @@ sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" .env || true
 # Pastikan folder dan file SQLite siap sebelum composer post-install
 mkdir -p database storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 touch database/database.sqlite
-
-# Permission awal agar artisan & composer bisa menulis
 chmod -R 777 storage bootstrap/cache database
 
-log_info "Menjalankan Composer Install (Safe Mode)..."
-php -d memory_limit=-1 /usr/local/bin/composer install --no-dev --no-scripts --optimize-autoloader --no-interaction --prefer-dist --ignore-platform-reqs
+log_info "Menjalankan Composer Install dengan PHP 8.4..."
+php8.4 -d memory_limit=-1 /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
 log_info "Generate APP_KEY..."
-php artisan key:generate --force
-
-log_info "Menjalankan Package Discovery..."
-php artisan package:discover --ansi || true
+php8.4 artisan key:generate --force
 
 log_info "Menjalankan migrasi database & seeder..."
-php artisan migrate --force --seed
+php8.4 artisan migrate --force --seed
 
 log_info "Mengompilasi aset Vite/Tailwind (NPM Build)..."
 npm install --no-audit --no-fund
 npm run build
 
 log_info "Optimasi cache route, config, dan views..."
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
+php8.4 artisan config:cache || true
+php8.4 artisan route:cache || true
+php8.4 artisan view:cache || true
 
 # Pastikan direktori videos dan gambar ada
 mkdir -p public/videos public/images
