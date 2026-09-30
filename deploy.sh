@@ -7,6 +7,10 @@
 
 set -Eeuo pipefail
 
+# Izinkan Composer berjalan di mode Root
+export COMPOSER_ALLOW_SUPERUSER=1
+export DEBIAN_FRONTEND=noninteractive
+
 # Warna Output Terminal
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -91,23 +95,21 @@ fi
 # ------------------------------------------------------------------------------
 log_step "Langkah 2: Menyiapkan Paket Sistem Ubuntu 24.04 LTS"
 
-export DEBIAN_FRONTEND=noninteractive
 log_info "Memperbarui repositori paket OS..."
 apt-get update -y
-apt-get install -y software-properties-common curl git unzip ufw lsb-release ca-certificates apt-transport-https
+apt-get install -y software-properties-common curl git unzip zip ufw lsb-release ca-certificates apt-transport-https
 
 log_info "Memasang Nginx Web Server..."
 apt-get install -y nginx
 
 log_info "Memasang PHP & Ekstensi Laravel yang Dibutuhkan..."
 # Ubuntu 24.04 menyediakan PHP 8.3 secara default di repo resmi
-apt-get install -y php-fpm php-cli php-mbstring php-xml php-bcmath php-curl php-sqlite3 php-mysql php-zip php-intl php-gd
+apt-get install -y php-fpm php-cli php-mbstring php-xml php-bcmath php-curl php-sqlite3 php-mysql php-zip php-intl php-gd php-tokenizer
 
 # Deteksi Socket PHP-FPM aktif
-PHP_FPM_SOCK=$(find /var/run/php/ -type s -name "php*-fpm.sock" | sort -V | tail -n 1)
+PHP_FPM_SOCK=$(find /var/run/php/ -type s -name "php*-fpm.sock" | sort -V | tail -n 1 || true)
 if [[ -z "${PHP_FPM_SOCK}" ]]; then
-    # Fallback jika belum berjalan
-    PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+    PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' || echo "8.3")
     systemctl start "php${PHP_VER}-fpm" || true
     PHP_FPM_SOCK="/var/run/php/php${PHP_VER}-fpm.sock"
 fi
@@ -116,11 +118,10 @@ log_info "Terdeteksi Socket PHP-FPM: ${PHP_FPM_SOCK}"
 # Install Composer
 if ! command -v composer &> /dev/null; then
     log_info "Memasang Composer..."
-    curl -sS https://getcomposer.org/installer | php
-    mv composer.phar /usr/local/bin/composer
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
     chmod +x /usr/local/bin/composer
 else
-    log_info "Composer sudah terpasang."
+    log_info "Composer sudah terpasang ($(composer --version | head -n 1))."
 fi
 
 # Install Node.js 20.x & NPM
@@ -144,6 +145,7 @@ mkdir -p /var/www
 if [[ -d "${TARGET_PATH}/.git" ]]; then
     log_warn "Direktori ${TARGET_PATH} sudah ada, melakukan git pull..."
     cd "${TARGET_PATH}"
+    git config --global --add safe.directory "${TARGET_PATH}" || true
     git fetch --all
     git reset --hard origin/main || git reset --hard origin/master || true
     git pull origin main || git pull origin master || true
@@ -151,6 +153,7 @@ else
     log_info "Meng-clone repository ${GIT_REPO} ke ${TARGET_PATH}..."
     git clone "${GIT_REPO}" "${TARGET_PATH}"
     cd "${TARGET_PATH}"
+    git config --global --add safe.directory "${TARGET_PATH}" || true
 fi
 
 # ------------------------------------------------------------------------------
@@ -161,26 +164,42 @@ log_step "Langkah 4: Konfigurasi Laravel & Build Aset"
 # Copy file .env jika belum ada
 if [[ ! -f ".env" ]]; then
     log_info "Membuat file .env dari .env.example..."
-    cp .env.example .env
+    if [[ -f ".env.example" ]]; then
+        cp .env.example .env
+    else
+        cat > .env << 'ENVEOF'
+APP_NAME="RZ Store"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=http://localhost
+
+LOG_CHANNEL=stack
+LOG_LEVEL=error
+
+DB_CONNECTION=sqlite
+
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+ENVEOF
+    fi
 fi
 
 # Update konfigurasi .env untuk production
-sed -i "s|^APP_ENV=.*|APP_ENV=production|" .env
-sed -i "s|^APP_DEBUG=.*|APP_DEBUG=false|" .env
-sed -i "s|^APP_URL=.*|APP_URL=http://${DOMAIN_NAME}|" .env
-sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" .env
+sed -i "s|^APP_ENV=.*|APP_ENV=production|" .env || true
+sed -i "s|^APP_DEBUG=.*|APP_DEBUG=false|" .env || true
+sed -i "s|^APP_URL=.*|APP_URL=http://${DOMAIN_NAME}|" .env || true
+sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" .env || true
 
-log_info "Menjalankan Composer Install..."
-composer install --no-dev --optimize-autoloader --no-interaction
+# Pastikan folder dan file SQLite siap sebelum composer post-install
+mkdir -p database storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+touch database/database.sqlite
+
+log_info "Menjalankan Composer Install (Memory Uncapped)..."
+php -d memory_limit=-1 /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
 log_info "Generate APP_KEY..."
 php artisan key:generate --force
-
-# Pastikan folder dan file SQLite siap
-mkdir -p database
-if [[ ! -f "database/database.sqlite" ]]; then
-    touch database/database.sqlite
-fi
 
 log_info "Menjalankan migrasi database & seeder..."
 php artisan migrate --force --seed
@@ -190,9 +209,9 @@ npm install --no-audit --no-fund
 npm run build
 
 log_info "Optimasi cache route, config, dan views..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
 # Pastikan direktori videos dan gambar ada
 mkdir -p public/videos public/images
@@ -201,6 +220,7 @@ mkdir -p public/videos public/images
 log_info "Mengatur hak akses (ownership) www-data..."
 chown -R www-data:www-data "${TARGET_PATH}"
 chmod -R 775 "${TARGET_PATH}/storage" "${TARGET_PATH}/bootstrap/cache" "${TARGET_PATH}/database"
+chmod 664 "${TARGET_PATH}/database/database.sqlite" || true
 
 log_success "Aplikasi Laravel siap dijalankan."
 
