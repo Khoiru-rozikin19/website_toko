@@ -102,9 +102,8 @@ apt-get install -y software-properties-common curl git unzip zip ufw lsb-release
 log_info "Memasang Nginx Web Server..."
 apt-get install -y nginx
 
-log_info "Memasang PHP & Ekstensi Laravel yang Dibutuhkan..."
-# Ubuntu 24.04 menyediakan PHP 8.3 secara default di repo resmi
-apt-get install -y php-fpm php-cli php-mbstring php-xml php-bcmath php-curl php-sqlite3 php-mysql php-zip php-intl php-gd php-tokenizer
+log_info "Memasang PHP & Seluruh Ekstensi yang Dibutuhkan Laravel..."
+apt-get install -y php-fpm php-cli php-mbstring php-xml php-bcmath php-curl php-sqlite3 php-mysql php-zip php-intl php-gd php-tokenizer php-dom
 
 # Deteksi Socket PHP-FPM aktif
 PHP_FPM_SOCK=$(find /var/run/php/ -type s -name "php*-fpm.sock" | sort -V | tail -n 1 || true)
@@ -195,11 +194,17 @@ sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" .env || true
 mkdir -p database storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 touch database/database.sqlite
 
-log_info "Menjalankan Composer Install (Memory Uncapped)..."
-php -d memory_limit=-1 /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+# Permission awal agar artisan & composer bisa menulis
+chmod -R 777 storage bootstrap/cache database
+
+log_info "Menjalankan Composer Install (Safe Mode)..."
+php -d memory_limit=-1 /usr/local/bin/composer install --no-dev --no-scripts --optimize-autoloader --no-interaction --prefer-dist --ignore-platform-reqs
 
 log_info "Generate APP_KEY..."
 php artisan key:generate --force
+
+log_info "Menjalankan Package Discovery..."
+php artisan package:discover --ansi || true
 
 log_info "Menjalankan migrasi database & seeder..."
 php artisan migrate --force --seed
@@ -216,7 +221,7 @@ php artisan view:cache || true
 # Pastikan direktori videos dan gambar ada
 mkdir -p public/videos public/images
 
-# Permission Ownership
+# Permission Ownership Akhir untuk www-data
 log_info "Mengatur hak akses (ownership) www-data..."
 chown -R www-data:www-data "${TARGET_PATH}"
 chmod -R 775 "${TARGET_PATH}/storage" "${TARGET_PATH}/bootstrap/cache" "${TARGET_PATH}/database"
