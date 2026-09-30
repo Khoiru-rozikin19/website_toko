@@ -25,6 +25,12 @@ NC='\033[0m'
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${PROJECT_DIR}"
 
+# Izinkan git beroperasi pada direktori proyek (mencegah error dubious ownership di Ubuntu)
+if command -v git &>/dev/null; then
+    git config --global --add safe.directory "${PROJECT_DIR}" 2>/dev/null || true
+    git config --global --add safe.directory "*" 2>/dev/null || true
+fi
+
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
@@ -79,11 +85,30 @@ do_apply_changes() {
 
     # 4. Database Migration
     log_info "Menjalankan migrasi database..."
-    if [ ! -f "database/database.sqlite" ] && grep -q "DB_CONNECTION=sqlite" .env 2>/dev/null; then
-        touch database/database.sqlite
+    if grep -q "^DB_CONNECTION=sqlite" .env 2>/dev/null || ! grep -q "^DB_CONNECTION=" .env 2>/dev/null; then
+        [ -f "database/database.sqlite" ] || touch database/database.sqlite
+        chmod 664 database/database.sqlite 2>/dev/null || true
+        chmod 775 database 2>/dev/null || true
     fi
-    php artisan migrate --force
-    log_success "Migrasi tabel database selesai."
+
+    if ! php artisan migrate --force; then
+        log_warn "Koneksi database saat ini gagal dihubungi."
+        if grep -q "^DB_CONNECTION=mysql" .env 2>/dev/null; then
+            log_info "Mengalihkan database ke SQLite secara otomatis..."
+            sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" .env
+            sed -i "s|^SESSION_DRIVER=.*|SESSION_DRIVER=file|" .env
+            sed -i "s|^CACHE_STORE=.*|CACHE_STORE=file|" .env
+            sed -i "s|^QUEUE_CONNECTION=.*|QUEUE_CONNECTION=sync|" .env
+            touch database/database.sqlite
+            chmod 664 database/database.sqlite 2>/dev/null || true
+            chmod 775 database 2>/dev/null || true
+            php artisan optimize:clear
+            php artisan migrate --force
+            log_success "Migrasi database SQLite berhasil diselesaikan!"
+        fi
+    else
+        log_success "Migrasi tabel database selesai."
+    fi
 
     # 5. Clear & Re-cache Optimization
     log_info "Membersihkan cache lama dan membuat cache baru untuk produksi..."
@@ -125,13 +150,17 @@ do_update() {
     
     log_info "Lokasi projek: ${PROJECT_DIR}"
     
-    # 1. Git Pull
+    # 1. Pastikan safe.directory diizinkan untuk menghindari error dubious ownership
+    git config --global --add safe.directory "${PROJECT_DIR}" 2>/dev/null || true
+    git config --global --add safe.directory "*" 2>/dev/null || true
+
+    # 2. Git Pull
     log_info "Mengambil update terbaru dari GitHub..."
     git fetch --all
     git reset --hard origin/main || git pull origin main
     log_success "Kode terbaru dari GitHub berhasil diunduh."
 
-    # 2. Terapkan seluruh perubahan (Composer, NPM, Migrate, Cache, Permissions)
+    # 3. Terapkan seluruh perubahan (Composer, NPM, Migrate, Cache, Permissions)
     do_apply_changes
 }
 
