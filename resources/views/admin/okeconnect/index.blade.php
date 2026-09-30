@@ -3,9 +3,9 @@
 @section('title', 'API OkeConnect - Integrasi Transaksi IP - Panel Admin RZ Store')
 
 @section('content')
-<div class="page-container" style="padding: 28px 32px;">
+<div class="page-container">
     {{-- Page Header --}}
-    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
         <div>
             <div style="font-size: 13px; color: #64748B; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                 <span>Panel Admin</span>
@@ -19,7 +19,7 @@
                 Konfigurasi koneksi Host-to-Host (H2H) dengan IP Center OkeConnect untuk otomatisasi transaksi pulsa & kuota.
             </p>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button onclick="testConnection()" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; background: #FFFFFF; border: 1px solid #E2E8F0; color: #334155; cursor: pointer; transition: all 0.2s;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
@@ -38,7 +38,7 @@
     </div>
 
     {{-- Status Banner Cards --}}
-    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+    <div class="admin-oke-grid" style="margin-bottom: 24px;">
         {{-- Saldo Card --}}
         <div style="background: linear-gradient(135deg, #065F46, #047857); border-radius: 16px; padding: 22px 24px; color: #FFFFFF; box-shadow: 0 10px 20px rgba(4, 120, 87, 0.15); display: flex; justify-content: space-between; align-items: center;">
             <div>

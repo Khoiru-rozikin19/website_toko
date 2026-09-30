@@ -3,9 +3,9 @@
 @section('title', 'Kelola Produk - Panel Admin RZ Store')
 
 @section('content')
-<div class="page-container" style="padding: 28px 32px;">
+<div class="page-container">
     {{-- Page Header --}}
-    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
         <div>
             <div style="font-size: 13px; color: #64748B; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                 <span>Panel Admin</span>
@@ -19,7 +19,7 @@
                 Atur katalog paket data OkeConnect & layanan akun VPN server pribadi.
             </p>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button onclick="syncOkeconnectProducts()" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; background: #FFFFFF; border: 1px solid #E2E8F0; color: #334155; cursor: pointer; transition: all 0.2s;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"/>
@@ -39,7 +39,7 @@
     </div>
 
     {{-- Stats Grid --}}
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+    <div class="stats-grid" style="margin-bottom: 24px;">
         <div style="background: #FFFFFF; border-radius: 14px; padding: 18px; border: 1px solid #E2E8F0; display: flex; align-items: center; gap: 14px;">
             <div style="width: 44px; height: 44px; border-radius: 12px; background: #EEF2FF; color: #4361EE; display: flex; align-items: center; justify-content: center;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

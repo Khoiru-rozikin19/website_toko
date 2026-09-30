@@ -168,7 +168,7 @@
                 <span class="mobile-header-logo">RZ STORE</span>
             </div>
 
-            <div class="main-content-inner" style="padding: 0;">
+            <div class="main-content-inner">
                 @yield('content')
             </div>
         </main>

@@ -3,9 +3,9 @@
 @section('title', 'Manajemen Server VPS - Panel Admin RZ Store')
 
 @section('content')
-<div class="page-container" style="padding: 28px 32px;">
+<div class="page-container">
     {{-- Page Header --}}
-    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
         <div>
             <div style="font-size: 13px; color: #64748B; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                 <span>Panel Admin</span>
@@ -19,7 +19,7 @@
                 Integrasi remote SSH ke VPS Ubuntu 24.04 LTS untuk monitoring & manajemen akun VPN (WireGuard / V2Ray / OpenVPN).
             </p>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button onclick="testSshConnection()" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; background: #FFFFFF; border: 1px solid #E2E8F0; color: #334155; cursor: pointer; transition: all 0.2s;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
